@@ -19,27 +19,27 @@ Within the pipeline there are a number of models that can be used to continuousl
 
 ### Baseline Class
 
-RandomRanker: A random baseline that randomly generates a top *k* social tie list to compare against the weighted survey ground truth.
+1) RandomRanker: A random baseline that randomly generates a top *k* social tie list to compare against the weighted survey ground truth.
 
 ### Single Attribute Class
 
-1) BowTieRanker: A model that predicts the social tie list using bow tie overlap metric from [4].
+2) BowTieRanker: A model that predicts the social tie list using bow tie overlap metric from [4].
 
-2) VolumeRanker: A model that assembles the social tie list using the magnitude of communication events generated.
+3) VolumeRanker: A model that assembles the social tie list using the magnitude of communication events generated.
 
-3) FreqRanker: A model that assembles the social tie list using the frequency of communication events.
+4) FreqRanker: A model that assembles the social tie list using the frequency of communication events.
 
-4) WindowedVolumeRanker: A model that assembles the social tie list using the volume of communication events generated within a sliding window (parameters: *window_size*).
+5) WindowedVolumeRanker: A model that assembles the social tie list using the volume of communication events generated within a sliding window (parameters: *window_size*).
 
-5) RecencyRanker: A model that assembles the social tie list using the recency of communication events.
+6) RecencyRanker: A model that assembles the social tie list using the recency of communication events.
 
-6) DurationRanker: A model that assembles the social tie list using the overall time difference between the occurance of the first communication event and the most recent communication event.
+7) DurationRanker: A model that assembles the social tie list using the overall time difference between the occurance of the first communication event and the most recent communication event.
 
 ### Time Series Class
 
-1) HawkesRanker: A model that assembles the social tie list using a univariate Hawkes process (parameters: *beta*).
+8) HawkesRanker: A model that assembles the social tie list using a univariate Hawkes process (parameters: *beta*).
 
-2) CogSNetRanker: A model that assembles the social tie list using the Cognitive Social Network model as defined in [5] (parameters: *L*, *mu*, *theta*, *forget_type*).
+9) CogSNetRanker: A model that assembles the social tie list using the Cognitive Social Network model as defined in [5] (parameters: *L*, *mu*, *theta*, *forget_type*).
 
 ### Machine Learning Class
 
