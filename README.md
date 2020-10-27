@@ -8,6 +8,7 @@ After cloning the repository, call
 
 ```bash
 pip install -r requirements.txt
+pip install -e git+https://github.com/changyaochen/rbo.git@master#egg=rbo
 ```
 
 This will install all required dependencies.
