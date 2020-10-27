@@ -23,7 +23,7 @@ Within the pipeline there are a number of models that can be used to continuousl
 
 ### Single Attribute Class
 
-2) BowTieRanker: A model that predicts the social tie list using bow tie overlap metric from [4].
+2) BowTieRanker: A model that predicts the social tie list using bow tie overlap metric from [2].
 
 3) VolumeRanker: A model that assembles the social tie list using the magnitude of communication events generated.
 
@@ -39,7 +39,7 @@ Within the pipeline there are a number of models that can be used to continuousl
 
 8) HawkesRanker: A model that assembles the social tie list using a univariate Hawkes process (parameters: *beta*).
 
-9) CogSNetRanker: A model that assembles the social tie list using the Cognitive Social Network model as defined in [5] (parameters: *L*, *mu*, *theta*, *forget_type*).
+9) CogSNetRanker: A model that assembles the social tie list using the Cognitive Social Network model as defined in [3] (parameters: *L*, *mu*, *theta*, *forget_type*).
 
 ### Machine Learning Class
 
@@ -49,7 +49,7 @@ Within the pipeline there are a number of models that can be used to continuousl
 
 ## Preparing the Data
 
-To run the rankers listed above, the pipleline requires communication data and sparse ego network data stored in appropriate data structures. From [1], the procured data can be found in [2,3]. Given the relevant data, place it in the `data/` directory, and call
+To run the rankers listed above, the pipleline requires communication data and sparse ego network data stored in appropriate data structures. From [1], the procured data can be found in [4,5]. Given the relevant data, place it in the `data/` directory, and call
 
 ```bash
 python generate_survey.py
@@ -57,11 +57,11 @@ python create_interaction_dicts.py
 python create_survey
 ```
 
-This will sequentially weight the ego network surveys and generate the approrpiate data structures for these surveys and the communication data.
+This will sequentially weight the ego network surveys and then format and store the communication data and the surveys to be retrieved by the rankers during runtime.
 
 ## Comparing rankers
 
-To compare any number of these rankers, run 
+To compare any number of the rankers, run 
 
 ```bash
 python test_rankers.py
@@ -81,12 +81,12 @@ Simply add the target rankers in the `rankers` and `pairwise_rankers` lists as s
 
 ## References
 
-[1] Flamino, James, et al. "Modeling Tie Strength in Evolving Social Networks" (2020)
+[1] Flamino, James, Ross DeVito, Boleslaw K. Szymanski, and Omar Lizardo. "Modeling Tie Strength in Evolving Social Networks" (2020)
 
-[2] Striegel, Aaron, et al. "Lessons learned from the netsense smartphone study." ACM SIGCOMM Computer Communication Review 43.4 (2013): 51-56.
+[2] Mattie, Heather, et al. "Understanding tie strength in social networks using a local “bow tie” framework." Scientific reports 8.1 (2018): 1-9.
 
-[3] Purta, Rachael, et al. "Experiences measuring sleep and physical activity patterns across a large college cohort with fitbits." Proceedings of the 2016 ACM international symposium on wearable computers. 2016.
+[3] Michalski, Radosław, et al. "Social networks through the prism of cognition." arXiv preprint arXiv:1806.04658 (2018).
 
-[4] Mattie, Heather, et al. "Understanding tie strength in social networks using a local “bow tie” framework." Scientific reports 8.1 (2018): 1-9.
+[4] Striegel, Aaron, et al. "Lessons learned from the netsense smartphone study." ACM SIGCOMM Computer Communication Review 43.4 (2013): 51-56.
 
-[5] Michalski, Radosław, et al. "Social networks through the prism of cognition." arXiv preprint arXiv:1806.04658 (2018).
+[5] Purta, Rachael, et al. "Experiences measuring sleep and physical activity patterns across a large college cohort with fitbits." Proceedings of the 2016 ACM international symposium on wearable computers. 2016.
