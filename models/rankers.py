@@ -2,6 +2,7 @@ import os
 from collections import defaultdict
 import pickle
 import warnings
+import sys
 
 import networkx as nx
 
@@ -13,7 +14,6 @@ from keras.preprocessing.sequence import pad_sequences
 import rbo  # https://github.com/changyaochen/rbo
 
 from models.rankers_util import *
-
 
 class Ranker():
 	""" Superclass of Rankers, which are used to predict closeness based 
@@ -62,7 +62,8 @@ class Ranker():
 
 			for survey_time, survey in surveys.items():
 				# this number of ids will be returned in ranking
-				survey_n = len(survey)
+				# survey_n = len(survey)
+				survey_n = 10
 
 				if str(self) == 'BowTieRanker':
 					pred_dict[respondant_id][survey_time] = self._rank((interaction_dict, respondant_id), 
@@ -78,18 +79,164 @@ class Ranker():
 
 		return pred_dict
 
+	# Time-staggered validation method
+	def ML_ts_score(self, interaction_dict, survey_dict_train, survey_dict_test, dataset_type):
+		if dataset_type == 'NetSense':
+			cluster_markers = ['2000-01-01 00:00:00', '2012-04-01 00:00:00', '2012-06-01 00:00:00', '2013-03-01 00:00:00', '2013-08-01 00:00:00']
+		elif dataset_type == 'NetHealth':
+			cluster_markers = ['2000-01-01 00:00:00', '2015-12-01 00:00:00', '2016-03-01 00:00:00', '2016-08-01 00:00:00', '2016-12-01 00:00:00', '2017-06-01 00:00:00', '2018-01-01 00:00:00', '2018-06-01 00:00:00', '2019-06-01 00:00:00']
+		else:
+			print('WARNING: Incorrect dataset_type for ML_score()')
+			sys.exit()
+
+		predicted_rankings = {}
+		for i in range(2, len(cluster_markers)):
+			test_start = datetime.strptime(cluster_markers[i - 1], '%Y-%m-%d %H:%M:%S') # Test start should be test end
+			test_end = datetime.strptime(cluster_markers[i], '%Y-%m-%d %H:%M:%S')
+		
+			sub_survey_dict_train = {}
+			for respondant_id, survey_times in survey_dict_train.items():
+				sub_survey_dict_train[respondant_id] = {}
+				for time in survey_times:
+					if datetime.utcfromtimestamp(time) < test_start:
+						sub_survey_dict_train[respondant_id][time] = survey_dict_train[respondant_id][time]
+
+			sub_survey_dict_train = {k: v for k, v in sub_survey_dict_train.items() if len(v) > 0}
+
+			sub_survey_dict_test = {}
+			for respondant_id, survey_times in survey_dict_test.items():
+				sub_survey_dict_test[respondant_id] = {}
+				for time in survey_times:
+					if datetime.utcfromtimestamp(time) > test_start and datetime.utcfromtimestamp(time) < test_end:
+						sub_survey_dict_test[respondant_id][time] = survey_dict_test[respondant_id][time]
+
+			sub_survey_dict_test = {k: v for k, v in sub_survey_dict_test.items() if len(v) > 0}
+		
+			self.fit(interaction_dict, sub_survey_dict_train)
+
+			sub_predicted_rankings = self.predict(interaction_dict, sub_survey_dict_test)
+			
+			for respondant_id, predictions in sub_predicted_rankings.items():
+				if respondant_id not in predicted_rankings:
+					predicted_rankings[respondant_id] = {}
+				for survey_time, pred_ranking in predictions.items():
+					predicted_rankings[respondant_id][survey_time] = pred_ranking
+
+		jaccards = []
+		rbos = []
+		kendal_taus = []
+
+		for respondant_id, predictions in predicted_rankings.items():
+			jac = []
+			r = []
+			weights = []
+
+			tau = []
+			tau_weights = []
+			
+			for survey_time, pred_ranking in predictions.items():
+				survey_ranking = list(survey_dict_test[respondant_id][survey_time].values())
+
+				jac.append(jaccard_similarity(survey_ranking, pred_ranking))
+
+				r.append(rbo.RankingSimilarity(survey_ranking, pred_ranking).rbo())
+
+				weights.append(len(survey_ranking))
+
+				target_tau = kendal_tau(survey_ranking, pred_ranking)
+				if target_tau != None:
+					tau.append(target_tau)
+					tau_weights.append(len(survey_ranking))
+
+			if len(weights) > 0: # alternative: np.average and use weights
+				jaccards.append(np.average(jac, weights=weights))
+				rbos.append(np.average(r, weights=weights))
+
+			if len(tau_weights) > 0: # alternative: np.average and use tau_weights
+				kendal_taus.append(np.average(tau, weights=tau_weights))
+
+		return {
+			"jaccard_mean": np.mean(jaccards),
+			"rbo_mean": np.mean(rbos),
+			"kendall_tau_mean": np.mean(kendal_taus),
+			"jaccard_var": np.var(jaccards),
+			"rbo_var": np.var(rbos),
+			"kendall_tau_var": np.var(kendal_taus)
+		}
+
+	# Time-staggered validation method, without the training process
+	def ts_score(self, interaction_dict, survey_dict_test, dataset_type):
+		if dataset_type == 'NetSense':
+			cluster_markers = ['2000-01-01 00:00:00', '2012-04-01 00:00:00', '2012-06-01 00:00:00', '2013-03-01 00:00:00', '2013-08-01 00:00:00']
+		elif dataset_type == 'NetHealth':
+			cluster_markers = ['2000-01-01 00:00:00', '2015-12-01 00:00:00', '2016-03-01 00:00:00', '2016-08-01 00:00:00', '2016-12-01 00:00:00', '2017-06-01 00:00:00', '2018-01-01 00:00:00', '2018-06-01 00:00:00', '2019-06-01 00:00:00']
+		else:
+			print('WARNING: Incorrect dataset_type for ML_score()')
+			sys.exit()
+
+		predicted_rankings = {}
+		for i in range(2, len(cluster_markers)):
+			test_start = datetime.strptime(cluster_markers[i - 1], '%Y-%m-%d %H:%M:%S') # Test start should be test end
+			test_end = datetime.strptime(cluster_markers[i], '%Y-%m-%d %H:%M:%S')
+		
+			sub_survey_dict_test = {}
+			for respondant_id, survey_times in survey_dict_test.items():
+				sub_survey_dict_test[respondant_id] = {}
+				for time in survey_times:
+					if datetime.utcfromtimestamp(time) > test_start and datetime.utcfromtimestamp(time) < test_end:
+						sub_survey_dict_test[respondant_id][time] = survey_dict_test[respondant_id][time]
+
+			sub_predicted_rankings = self.predict(interaction_dict, sub_survey_dict_test)
+			
+			for respondant_id, predictions in sub_predicted_rankings.items():
+				if respondant_id not in predicted_rankings:
+					predicted_rankings[respondant_id] = {}
+				for survey_time, pred_ranking in predictions.items():
+					predicted_rankings[respondant_id][survey_time] = pred_ranking
+
+		jaccards = []
+		rbos = []
+		kendal_taus = []
+
+		for respondant_id, predictions in predicted_rankings.items():
+			jac = []
+			r = []
+			weights = []
+
+			tau = []
+			tau_weights = []
+			
+			for survey_time, pred_ranking in predictions.items():
+				survey_ranking = list(survey_dict_test[respondant_id][survey_time].values())
+
+				jac.append(jaccard_similarity(survey_ranking, pred_ranking))
+
+				r.append(rbo.RankingSimilarity(survey_ranking, pred_ranking).rbo())
+
+				weights.append(len(survey_ranking))
+
+				target_tau = kendal_tau(survey_ranking, pred_ranking)
+				if target_tau != None:
+					tau.append(target_tau)
+					tau_weights.append(len(survey_ranking))
+
+			if len(weights) > 0: # alternative: np.average and use weights
+				jaccards.append(np.average(jac, weights=weights))
+				rbos.append(np.average(r, weights=weights))
+
+			if len(tau_weights) > 0: # alternative: np.average and use tau_weights
+				kendal_taus.append(np.average(tau, weights=tau_weights))
+
+		return {
+			"jaccard_mean": np.mean(jaccards),
+			"rbo_mean": np.mean(rbos),
+			"kendall_tau_mean": np.mean(kendal_taus),
+			"jaccard_var": np.var(jaccards),
+			"rbo_var": np.var(rbos),
+			"kendall_tau_var": np.var(kendal_taus)
+		}
+
 	def score(self, interaction_dict, survey_dict):
-		""" Predicts ranking using self.predict, then scores predictions and 
-		returns a dictionary of scoring metrics.
-
-		Args:
-			interaction_dict:
-			survey_dict:
-
-		Returns:
-			returns a dictionary where the keys are the names of scoring metrics
-				and the values are the corresponding scores
-		"""
 		predicted_rankings = self.predict(interaction_dict, survey_dict)
 
 		jaccards = []
@@ -97,26 +244,62 @@ class Ranker():
 		kendal_taus = []
 
 		for respondant_id, predictions in predicted_rankings.items():
+			# print('=', respondant_id)
+			jac = []
+			r = []
+			weights = []
+
+			tau = []
+			tau_weights = []
+			
 			for survey_time, pred_ranking in predictions.items():
-				survey_ranking = list(
-					survey_dict[respondant_id][survey_time].values())
+				survey_ranking = list(survey_dict[respondant_id][survey_time].values())
 
-				jaccards.append(
-					jaccard_similarity(survey_ranking, pred_ranking))
 
-				rbos.append(
-					rbo.RankingSimilarity(survey_ranking, pred_ranking).rbo())
 
-				kendal_taus.append(kendal_tau(survey_ranking, pred_ranking))
+				# # NOTE: PLEASE REMOVE
+				# new_survey_ranking = []
+				# for element in survey_ranking:
+				# 	if str(element) != 5:
+				# 		new_survey_ranking.append(element)
+				# survey_ranking = new_survey_ranking[:]
 
-		kendal_taus = np.asarray(kendal_taus)
-		kendal_taus = kendal_taus[kendal_taus != np.array(None)]
+				# # NOTE: PLEASE REMOVE
+				# new_pred_ranking = []
+				# for element in pred_ranking:
+				# 	if str(element) != 5:
+				# 		new_pred_ranking.append(element)
+				# pred_ranking = new_pred_ranking[:]
+
+
+
+				jac.append(jaccard_similarity(survey_ranking, pred_ranking))
+
+				r.append(rbo.RankingSimilarity(survey_ranking, pred_ranking).rbo())
+
+				weights.append(len(survey_ranking))
+
+				target_tau = kendal_tau(survey_ranking, pred_ranking)
+				if target_tau != None:
+					tau.append(target_tau)
+					tau_weights.append(len(survey_ranking))
+
+			if len(weights) > 0: # alternative: np.average and use weights
+				jaccards.append(np.average(jac, weights=weights))
+				rbos.append(np.average(r, weights=weights))
+
+			if len(tau_weights) > 0: # alternative: np.average and use tau_weights
+				kendal_taus.append(np.average(tau, weights=tau_weights))
 
 		return {
-			"jaccard": np.mean(jaccards),
-			"rbo": np.mean(rbos),
-			"kendall_tau": np.mean(kendal_taus)
+			"jaccard_mean": np.mean(jaccards),
+			"rbo_mean": np.mean(rbos),
+			"kendall_tau_mean": np.mean(kendal_taus),
+			"jaccard_var": np.var(jaccards),
+			"rbo_var": np.var(rbos),
+			"kendall_tau_var": np.var(kendal_taus)
 		}
+
 
 	def predict_and_score(self, interaction_dict, survey_dict, include_kt=True):
 		""" 
@@ -277,15 +460,15 @@ class VolumeRanker(Ranker):
 	def _rank(self, data, top_n, survey_time):
 		""" ranks the top_n possible ids in data """
 		canidate_event_counts = {
-                    k: len(v[np.asarray(v[:, 2] <= survey_time)])
-                   	for k, v in data.items()
-                   	if np.any(v[:, 2] <= survey_time)
-                }
+		    k: len(v[np.asarray(v[:, 2] <= survey_time)])
+			   for k, v in data.items()
+			   if np.any(v[:, 2] <= survey_time)
+		}
 
 		ordered_inds = (
-                    -np.asarray(list(canidate_event_counts.values()))).argsort()
+		    -np.asarray(list(canidate_event_counts.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(canidate_event_counts.keys()))[ordered_inds]
+		    list(canidate_event_counts.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -337,18 +520,18 @@ class FreqRanker(Ranker):
 	def _rank(self, data, top_n, survey_time):
 		""" ranks the top_n possible ids in data """
 		canidate_event_counts = {
-                    k: (
+		    k: (
 						len(v[np.asarray(v[:, 2] <= survey_time)])
 						/ (survey_time - min(v[np.asarray(v[:, 2] <= survey_time)][:, 2]))
 					)
-                   	for k, v in data.items()
-                   	if np.any(v[:, 2] <= survey_time)
-                }
+			   for k, v in data.items()
+			   if np.any(v[:, 2] <= survey_time)
+		}
 
 		ordered_inds = (
-                    -np.asarray(list(canidate_event_counts.values()))).argsort()
+		    -np.asarray(list(canidate_event_counts.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(canidate_event_counts.keys()))[ordered_inds]
+		    list(canidate_event_counts.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -376,9 +559,9 @@ class WindowedVolumeRanker(Ranker):
 		}
 
 		ordered_inds = (
-                    -np.asarray(list(canidate_event_counts.values()))).argsort()
+		    -np.asarray(list(canidate_event_counts.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(canidate_event_counts.keys()))[ordered_inds]
+		    list(canidate_event_counts.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -433,9 +616,9 @@ class RecencyRanker(Ranker):
 		}
 
 		ordered_inds = (
-                    -np.asarray(list(most_recent_timestamp.values()))).argsort()
+		    -np.asarray(list(most_recent_timestamp.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(most_recent_timestamp.keys()))[ordered_inds]
+		    list(most_recent_timestamp.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -454,9 +637,9 @@ class DurationRanker(Ranker):
 		}
 
 		ordered_inds = (
-                    np.asarray(list(most_recent_timestamp.values()))).argsort()
+		    np.asarray(list(most_recent_timestamp.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(most_recent_timestamp.keys()))[ordered_inds]
+		    list(most_recent_timestamp.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -481,7 +664,7 @@ class HawkesRanker(Ranker):
 
 		ordered_inds = (-np.asarray(list(hawkes_signals.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(hawkes_signals.keys()))[ordered_inds]
+		    list(hawkes_signals.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -545,9 +728,9 @@ class CogSNetRanker(Ranker):
 		}
 
 		ordered_inds = (
-                    -np.asarray(list(cogsnet_signals.values()))).argsort()
+		    -np.asarray(list(cogsnet_signals.values()))).argsort()
 		ordered_canidates = np.asarray(
-                    list(cogsnet_signals.keys()))[ordered_inds]
+		    list(cogsnet_signals.keys()))[ordered_inds]
 
 		return ordered_canidates[:top_n]
 
@@ -709,7 +892,7 @@ class PairwiseRanker(Ranker):
 			# get_volume_n_days_before(events, survey_time, 152),
 			# get_cogsnet_signal(events, survey_time, mu, theta, forget_type, 
 			# 					forget_intensity),
-			# get_hawkes_signal(events, survey_time, beta=1.727784e-07)
+			# get_hawkes_signal(events, survey_time, beta=1.697e-07)
 		]
 
 		return np.asarray(feat_vec)
@@ -753,7 +936,7 @@ class PairwiseRanker(Ranker):
 
 		node_ids = list(data.keys())
 		id_to_feats = {n_id: self._create_indiv_feat_vec(data[n_id], survey_time)
-                 for n_id in node_ids}
+		 for n_id in node_ids}
 
 		X_1 = []
 		X_2 = []
